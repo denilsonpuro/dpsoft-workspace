@@ -3,7 +3,7 @@ import { configuredPrice, configuredPrices, planCatalog } from "./plan-catalog.j
 import { readConfig } from "./config.js";
 describe("plan catalog", () => {
   it("defines three distinct monthly launch proposals", () => {
-    expect(planCatalog.map(p => p.amount)).toEqual([2900, 7900, 19900]);
+    expect(planCatalog.map(p => p.amount)).toEqual([3900, 9900, 24900]);
     expect(new Set(planCatalog.map(p => p.id)).size).toBe(3);
   });
   it("never uses another tier's price as fallback", () => {

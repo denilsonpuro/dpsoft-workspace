@@ -6,7 +6,7 @@ macOS is the first desktop target. The current local connector is not a signed d
 
 ## Launch pricing proposal
 
-Essential USD 29/month, Business USD 79/month, Scale USD 199/month. These are proposed prices, not validated margins. Tier-specific quotas, inference budgets and deliverables must be enforced before enabling sales. Do not promise unlimited AI, messaging or desktop execution.
+Updated proposal: Essential USD 39/month, Business USD 99/month, Scale USD 249/month. See `pricing-economics-20260906.md` for source-backed assumptions and contribution calculations. These replace the initial 29/79/199 placeholders, not any existing paid contract. Tier-specific quotas, inference budgets and deliverables must be enforced before enabling sales. Do not promise unlimited AI, messaging or desktop execution.
 
 Benchmarks reviewed: https://n8n.io/pricing/ (execution-based tiers) and https://zapier.com/pricing (task-based tiers). Prices are DPsoft proposals, not conversions or reproductions of competitor plans.
 

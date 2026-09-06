@@ -2,11 +2,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { LocalPrice, useLocale } from "./locale";
+import { guideCopy } from "./product-guide-copy";
 
-type Plan = { id: string; name: string; amount: number; currency: string; interval: string; intervalCount: number; available: boolean; proposed: boolean; live: boolean };
+type Plan = { id: string; name: string; amount: number; currency: string; interval: string; intervalCount: number; available: boolean; proposed: boolean; live: boolean; proposedMonthlyRuns?: number };
 const api = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
 export function PlanCatalog() {
-  const { t } = useLocale();
+  const { t, language } = useLocale();
+  const copy = guideCopy[language];
   const [plans, setPlans] = useState<Plan[]>([]);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -22,8 +24,9 @@ export function PlanCatalog() {
     <span className="public-kicker">DPSOFT / {plan.id.toUpperCase()}</span>
     <h3>{plan.name}</h3>
     <strong className="plan-price"><LocalPrice amountMinor={plan.amount} baseCurrency={plan.currency.toUpperCase()}/><small> / {plan.intervalCount > 1 ? plan.intervalCount : ""} {t(plan.interval)}</small></strong>
-    <p>{t(plan.proposed ? "Proposed launch price. Purchases are not available yet." : !plan.live ? "Stripe test mode. No real subscription sale." : "Price verified with the payment provider.")}</p>
-    <p>{t("Plan-specific allowances and automation availability must be finalized before sales open.")}</p>
+    <p>{copy.audiences[["essential", "business", "scale"].indexOf(plan.id)]}</p>
+    {plan.proposedMonthlyRuns && <p className="plan-allowance"><strong>{new Intl.NumberFormat(language).format(plan.proposedMonthlyRuns)}</strong><br/>{copy.plannedRuns}</p>}
+    <p className="form-note">{plan.proposed ? copy.planNote : t(!plan.live ? "Stripe test mode. No real subscription sale." : "Price verified with the payment provider.")}</p>
     <Link className="public-cta" href={`/workspace?plan=${plan.id}#billing`}>{t("Create an account / sign in ")}</Link>
   </article>)}</div>;
 }

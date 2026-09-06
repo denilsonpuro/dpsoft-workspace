@@ -9,3 +9,16 @@
 .public-pricing:has(.plan-catalog) { grid-template-columns: 1fr; }
 .plan-catalog .public-plan { min-width: 0; }
 @media (max-width: 900px) { .plan-catalog { grid-template-columns: 1fr; } }
+.product-guide { scroll-margin-top: 30px; }
+.product-guide h2, .guide-security h2 { max-width: 900px; font-size: clamp(28px, 4vw, 48px); line-height: 1.12; letter-spacing: -.035em; }
+.product-guide p, .guide-security p { line-height: 1.8; max-width: 85ch; }
+.guide-value { border-left: 3px solid #956047; padding: 6px 28px; margin: 30px 0 48px; }
+.guide-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; list-style: none; padding: 0; margin: 24px 0 0; }
+.guide-steps li { border-top: 1px solid #cec8bd; padding: 22px 0; }
+.guide-steps li > span { font: 600 14px monospace; color: #805139; }
+.guide-install { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px; margin-top: 30px; }
+.guide-install article { border-top: 1px solid #cec8bd; padding-top: 18px; }
+.guide-install a { color: #75482f; text-decoration: underline; text-underline-offset: 4px; }
+.guide-security { background: #eae5db; }
+.plan-allowance strong { font-size: 28px; }
+@media (max-width: 720px) { .guide-steps, .guide-install { grid-template-columns: 1fr; } .guide-value { padding-left: 18px; } }

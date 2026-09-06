@@ -1,9 +1,9 @@
 import type { AppConfig } from "./config.js";
 
 export const planCatalog = [
-  { id: "essential", name: "Essential", amount: 2900, currency: "usd", interval: "month" },
-  { id: "business", name: "Business", amount: 7900, currency: "usd", interval: "month" },
-  { id: "scale", name: "Scale", amount: 19900, currency: "usd", interval: "month" }
+  { id: "essential", name: "Essential", amount: 3900, currency: "usd", interval: "month", proposedMonthlyRuns: 500 },
+  { id: "business", name: "Business", amount: 9900, currency: "usd", interval: "month", proposedMonthlyRuns: 1500 },
+  { id: "scale", name: "Scale", amount: 24900, currency: "usd", interval: "month", proposedMonthlyRuns: 4000 }
 ] as const;
 export type PlanId = typeof planCatalog[number]["id"];
 export function configuredPrice(config: AppConfig, id: PlanId): string | undefined {
