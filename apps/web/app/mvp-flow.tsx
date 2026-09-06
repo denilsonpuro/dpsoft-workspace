@@ -6,6 +6,7 @@ import { Brand } from "./brand";
 import { CommerceAdmin } from "./commerce-ui";
 import { Subscription } from "./subscription";
 import { ReportTools } from "./report-tools";
+import { LocalDevices } from "./local-devices";
 import { WorkspaceIntelligence } from "./workspace-intelligence";
 import { Activity, Bot, Cable, Check, Database, FileClock, LayoutDashboard, LogOut, MessageSquare, Plus, RefreshCw, ScrollText, Trash2 } from "lucide-react";
 const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
@@ -196,7 +197,8 @@ function Overview({ dashboard }: {
     dashboard: Dashboard;
     go: (s: Section) => void;
 }) { const { t, localize } = useLocale(); const m = [["Connected systems", dashboard.metrics.connectedSystems], ["Active agents", dashboard.metrics.activeAgents], ["Actions today", dashboard.metrics.actionsToday], ["Failed actions", dashboard.metrics.failedActions]]; return <section className="operations-summary"><Heading title={t("Operational pulse")} subtitle={t("Recorded workspace activity \u00B7 refresh to retrieve the latest state")}/><section className="metrics">{localize(m.map(([l, v]) => <div className="metric" key={l}><div className="metric-label">{localize(l)}</div><div className="metric-value">{localize(v)}</div><div className="metric-note">{t("Organization records")}</div></div>))}</section><Panel title={t("Recent activity")}>{localize(dashboard.recentActivity.length ? <EventList events={dashboard.recentActivity}/> : <Empty icon={<FileClock />} title={t("No activity")} text={t("Connect a system to begin recording audit events.")}/>)}</Panel></section>; }
-function Connectors({ items, busy, run, reload }: {
+function Connectors(props: Parameters<typeof DatabaseConnectors>[0]) { return <><LocalDevices/><DatabaseConnectors {...props}/></>; }
+function DatabaseConnectors({ items, busy, run, reload }: {
     items: Connector[];
     busy: boolean;
     run: Runner;

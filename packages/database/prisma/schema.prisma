@@ -68,6 +68,25 @@ model Organization {
   sessions           Session[]
   billingAccount     BillingAccount?
   payments           PaymentAttempt[]
+  localDevices       LocalDevice[]
+}
+
+model LocalDevice {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  createdById String @db.Uuid
+  name String
+  pairingHash String? @unique
+  pairingExpiresAt DateTime
+  tokenHash String? @unique
+  tokenExpiresAt DateTime?
+  pairedAt DateTime?
+  lastSeenAt DateTime?
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
 }
 
 model CommerceSettings {

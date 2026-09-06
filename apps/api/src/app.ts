@@ -11,6 +11,7 @@ import { ZodError } from "zod";
 import { registerBilling } from "./billing.js";
 import { registerCommerce } from "./commerce.js";
 import { proxyTrust } from "./proxy-trust.js";
+import { registerLocalDevices } from "./local-devices.js";
 
 export async function buildApp(config: AppConfig) {
   const app = Fastify({
@@ -41,6 +42,7 @@ export async function buildApp(config: AppConfig) {
   await registerRoutes(app, config);
   await registerBilling(app, config);
   await registerCommerce(app, config);
+  await registerLocalDevices(app);
 
   app.setNotFoundHandler(async (request, reply) => reply.code(404).send({ error: { code: "NOT_FOUND", message: "The requested resource was not found.", requestId: request.id } }));
   app.setErrorHandler(async (error: FastifyError, request, reply) => {
