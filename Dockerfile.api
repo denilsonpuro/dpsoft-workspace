@@ -1,0 +1,28 @@
+FROM node:22-alpine AS build
+WORKDIR /app
+COPY package.json package-lock.json tsconfig.base.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY apps/connector/package.json apps/connector/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/core/package.json packages/core/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/mcp/package.json packages/mcp/package.json
+RUN npm ci
+COPY apps/api apps/api
+COPY packages packages
+RUN npm run build -w @dpsoft/core && DATABASE_URL=postgresql://build:build@localhost:5432/build npm exec -w @dpsoft/database -- prisma generate && npm exec -w @dpsoft/database -- tsc -p tsconfig.build.json && npm run build -w @dpsoft/mcp && npm run build -w @dpsoft/api
+
+FROM node:22-alpine AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+RUN addgroup -S dpsoft && adduser -S dpsoft -G dpsoft
+COPY --from=build --chown=dpsoft:dpsoft /app/package.json /app/package-lock.json ./
+COPY --from=build --chown=dpsoft:dpsoft /app/node_modules ./node_modules
+COPY --from=build --chown=dpsoft:dpsoft /app/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=dpsoft:dpsoft /app/apps/api/node_modules ./apps/api/node_modules
+COPY --from=build --chown=dpsoft:dpsoft /app/packages/core ./packages/core
+COPY --from=build --chown=dpsoft:dpsoft /app/packages/database ./packages/database
+COPY --from=build --chown=dpsoft:dpsoft /app/packages/mcp ./packages/mcp
+USER dpsoft
+EXPOSE 4000
+CMD ["node", "apps/api/dist/server.js"]

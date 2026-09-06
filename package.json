@@ -1,0 +1,17 @@
+{
+  "name": "dpsoft-ai-integration-platform",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "npm run dev --workspace @dpsoft/api",
+    "build": "npm run build -w @dpsoft/core && npm run build -w @dpsoft/database && npm run build -w @dpsoft/mcp && npm run build -w @dpsoft/api && npm run build -w @dpsoft/connector && npm run build -w @dpsoft/web",
+    "lint": "npm run lint --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "check": "npm run lint && npm run typecheck && npm run test && npm run build"
+  },
+  "engines": { "node": ">=22" },
+  "packageManager": "npm@11.8.0"
+}

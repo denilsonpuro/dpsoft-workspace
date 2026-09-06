@@ -1,0 +1,8 @@
+# Add inside the existing HTTPS VirtualHost for dpsoft.space only.
+# Preserve existing TLS, certificate renewal and logging configuration.
+# Requires mod_proxy, mod_proxy_http and mod_headers.
+ProxyPreserveHost On
+RequestHeader set X-Forwarded-Proto "https"
+ProxyPass "/.well-known/acme-challenge/" "!"
+ProxyPass "/" "http://127.0.0.1:8080/" connectiontimeout=5 timeout=120
+ProxyPassReverse "/" "http://127.0.0.1:8080/"

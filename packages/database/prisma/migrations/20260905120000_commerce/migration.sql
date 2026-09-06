@@ -1,0 +1,6 @@
+CREATE TABLE "CommerceSettings" ("id" TEXT NOT NULL DEFAULT 'global', "configuration" JSONB NOT NULL, "version" INTEGER NOT NULL DEFAULT 1, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "CommerceSettings_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "PaymentAttempt" ("id" UUID NOT NULL, "organizationId" UUID NOT NULL, "provider" TEXT NOT NULL, "status" TEXT NOT NULL DEFAULT 'PENDING', "amountMinor" INTEGER NOT NULL, "currency" TEXT NOT NULL, "accessDays" INTEGER NOT NULL, "providerReference" TEXT, "approvalUrl" TEXT, "receiptEncrypted" BYTEA, "receiptHash" TEXT, "receiptMime" TEXT, "receiptName" TEXT, "decidedById" UUID, "decisionNote" TEXT, "paidUntil" TIMESTAMP(3), "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" TIMESTAMP(3) NOT NULL, CONSTRAINT "PaymentAttempt_pkey" PRIMARY KEY ("id"));
+CREATE UNIQUE INDEX "PaymentAttempt_providerReference_key" ON "PaymentAttempt"("providerReference");
+CREATE UNIQUE INDEX "PaymentAttempt_receiptHash_key" ON "PaymentAttempt"("receiptHash");
+CREATE INDEX "PaymentAttempt_organizationId_status_idx" ON "PaymentAttempt"("organizationId", "status");
+ALTER TABLE "PaymentAttempt" ADD CONSTRAINT "PaymentAttempt_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;

@@ -1,0 +1,353 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+}
+
+enum ConnectorStatus {
+  DRAFT
+  CONNECTED
+  DEGRADED
+  OFFLINE
+  ERROR
+  AUTH_REQUIRED
+}
+
+enum ToolMode {
+  READ
+  WRITE
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  EXPIRED
+  CANCELLED
+  EXECUTED
+  FAILED
+}
+
+enum AuditStatus {
+  SUCCESS
+  FAILURE
+  DENIED
+  PENDING_APPROVAL
+}
+
+model Organization {
+  id                 String              @id @default(uuid()) @db.Uuid
+  name               String
+  slug               String              @unique
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+  deletedAt          DateTime?
+  memberships        Membership[]
+  roles              Role[]
+  connectors         ConnectorInstance[]
+  agents             Agent[]
+  approvals          Approval[]
+  auditLogs          AuditLog[]
+  conversations      Conversation[]
+  sessions           Session[]
+  billingAccount     BillingAccount?
+  payments           PaymentAttempt[]
+}
+
+model CommerceSettings {
+  id String @id @default("global")
+  configuration Json
+  version Int @default(1)
+  updatedAt DateTime @updatedAt
+}
+
+model PaymentAttempt {
+  id String @id @default(uuid()) @db.Uuid
+  organizationId String @db.Uuid
+  provider String
+  status String @default("PENDING")
+  amountMinor Int
+  currency String
+  accessDays Int
+  providerReference String? @unique
+  approvalUrl String?
+  receiptEncrypted Bytes?
+  receiptHash String? @unique
+  receiptMime String?
+  receiptName String?
+  decidedById String? @db.Uuid
+  decisionNote String?
+  paidUntil DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  @@index([organizationId, status])
+}
+
+model BillingAccount {
+  organizationId String @id @db.Uuid
+  customerId String @unique
+  checkoutSessionId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+}
+
+model User {
+  id            String       @id @default(uuid()) @db.Uuid
+  email         String       @unique
+  passwordHash  String
+  displayName   String
+  emailVerified DateTime?
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+  deletedAt     DateTime?
+  memberships   Membership[]
+  auditLogs     AuditLog[]   @relation("AuditActor")
+  approvalsMade Approval[]   @relation("ApprovalDecider")
+  conversations Conversation[]
+  sessions      Session[]
+}
+
+model Membership {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  userId         String           @db.Uuid
+  status         MembershipStatus @default(INVITED)
+  createdAt      DateTime         @default(now())
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  roles          MembershipRole[]
+
+  @@unique([organizationId, userId])
+  @@index([userId, status])
+}
+
+model Role {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  name           String
+  isSystem       Boolean          @default(false)
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  permissions    RolePermission[]
+  memberships    MembershipRole[]
+
+  @@unique([organizationId, name])
+}
+
+model Permission {
+  id          String           @id @default(uuid()) @db.Uuid
+  key         String           @unique
+  description String
+  roles       RolePermission[]
+  tools       ToolPermission[]
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@id([roleId, permissionId])
+}
+
+model MembershipRole {
+  membershipId String     @db.Uuid
+  roleId       String     @db.Uuid
+  membership   Membership @relation(fields: [membershipId], references: [id], onDelete: Cascade)
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  @@id([membershipId, roleId])
+}
+
+model ConnectorDefinition {
+  id          String              @id @default(uuid()) @db.Uuid
+  key         String              @unique
+  name        String
+  description String
+  category    String
+  instances   ConnectorInstance[]
+}
+
+model ConnectorInstance {
+  id                   String              @id @default(uuid()) @db.Uuid
+  organizationId       String              @db.Uuid
+  connectorDefinitionId String             @db.Uuid
+  name                 String
+  status               ConnectorStatus     @default(DRAFT)
+  environment          String
+  encryptedCredential  Bytes?
+  configuration        Json                @default("{}")
+  allowedSchema        Json                @default("{}")
+  lastHeartbeatAt      DateTime?
+  lastSuccessfulAt     DateTime?
+  lastErrorCode        String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  deletedAt            DateTime?
+  organization         Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  definition           ConnectorDefinition @relation(fields: [connectorDefinitionId], references: [id])
+  tools                Tool[]
+  agentLinks           AgentConnector[]
+
+  @@index([organizationId, status])
+}
+
+model Session {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String?      @db.Uuid
+  userId         String       @db.Uuid
+  tokenHash      String       @unique
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+  lastSeenAt     DateTime     @default(now())
+  revokedAt      DateTime?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+  @@index([organizationId, expiresAt])
+}
+
+model Tool {
+  id                  String           @id @default(uuid()) @db.Uuid
+  connectorInstanceId String           @db.Uuid
+  name                String
+  description         String
+  inputSchema         Json
+  outputSchema        Json
+  mode                ToolMode
+  riskLevel           RiskLevel
+  requiresApproval    Boolean          @default(false)
+  enabled             Boolean          @default(true)
+  connector           ConnectorInstance @relation(fields: [connectorInstanceId], references: [id], onDelete: Cascade)
+  permissions         ToolPermission[]
+  agentLinks          AgentTool[]
+
+  @@unique([connectorInstanceId, name])
+}
+
+model ToolPermission {
+  toolId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  tool         Tool       @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  @@id([toolId, permissionId])
+}
+
+model Agent {
+  id             String           @id @default(uuid()) @db.Uuid
+  organizationId String           @db.Uuid
+  name           String
+  description    String
+  instructions   String
+  modelProvider  String
+  modelName      String
+  active         Boolean          @default(true)
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  connectors     AgentConnector[]
+  tools          AgentTool[]
+  conversations  Conversation[]
+
+  @@index([organizationId, active])
+}
+
+model AgentConnector {
+  agentId     String            @db.Uuid
+  connectorId String            @db.Uuid
+  agent       Agent             @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  connector   ConnectorInstance @relation(fields: [connectorId], references: [id], onDelete: Cascade)
+  @@id([agentId, connectorId])
+}
+
+model AgentTool {
+  agentId String @db.Uuid
+  toolId  String @db.Uuid
+  agent   Agent  @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  tool    Tool   @relation(fields: [toolId], references: [id], onDelete: Cascade)
+  @@id([agentId, toolId])
+}
+
+model Approval {
+  id             String         @id @default(uuid()) @db.Uuid
+  organizationId String         @db.Uuid
+  toolId         String         @db.Uuid
+  requestedById  String         @db.Uuid
+  decidedById    String?        @db.Uuid
+  status         ApprovalStatus @default(PENDING)
+  inputDigest    String
+  inputEncrypted Bytes
+  expiresAt      DateTime
+  decidedAt      DateTime?
+  createdAt      DateTime       @default(now())
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  decidedBy      User?          @relation("ApprovalDecider", fields: [decidedById], references: [id])
+
+  @@index([organizationId, status, createdAt])
+}
+
+model AuditLog {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  actorId        String?      @db.Uuid
+  requestId      String
+  action         String
+  resourceType   String
+  resourceId     String?
+  connectorId    String?
+  toolId         String?
+  riskLevel      RiskLevel?
+  status         AuditStatus
+  metadata       Json
+  occurredAt     DateTime     @default(now())
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  actor          User?        @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, occurredAt(sort: Desc)])
+  @@index([organizationId, action, occurredAt(sort: Desc)])
+  @@index([requestId])
+}
+
+model Conversation {
+  id             String       @id @default(uuid()) @db.Uuid
+  organizationId String       @db.Uuid
+  userId         String       @db.Uuid
+  agentId        String       @db.Uuid
+  title          String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  agent          Agent        @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  messages       Message[]
+
+  @@index([organizationId, updatedAt(sort: Desc)])
+}
+
+model Message {
+  id             String       @id @default(uuid()) @db.Uuid
+  conversationId String       @db.Uuid
+  role           String
+  content        Json
+  createdAt      DateTime     @default(now())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
