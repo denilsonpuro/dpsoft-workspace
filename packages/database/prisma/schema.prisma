@@ -69,6 +69,17 @@ model Organization {
   billingAccount     BillingAccount?
   payments           PaymentAttempt[]
   localDevices       LocalDevice[]
+  usageMeters        UsageMeter[]
+}
+
+model UsageMeter {
+  organizationId String @db.Uuid
+  periodStart DateTime
+  standardRuns Int @default(0)
+  updatedAt DateTime @updatedAt
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, periodStart])
 }
 
 model LocalDevice {

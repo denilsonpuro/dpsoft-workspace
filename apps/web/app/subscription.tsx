@@ -20,6 +20,12 @@ type BillingState = {
     entitled: boolean;
     hasCustomer?: boolean;
     plan: Plan | null;
+    usage: {
+        standardRuns: number;
+        limit: number;
+        remaining: number;
+        periodStart: string;
+    } | null;
     subscription: {
         status: string;
         cancelAtPeriodEnd: boolean;

@@ -6,7 +6,8 @@ import { requireOrganization } from "./auth.js";
 import { commerceSettings } from "./commerce-config.js";
 import { verifyPayPal, verifyPaystack } from "./payment-providers.js";
 import { z } from "zod";
-import { configuredPrice, configuredPrices, planCatalog, type PlanId } from "./plan-catalog.js";
+import { configuredPrice, configuredPrices, planByPrice, planCatalog, type PlanId } from "./plan-catalog.js";
+import { currentStandardUsage } from "./usage-meter.js";
 
 function unavailable() { return Object.assign(new Error("Subscriptions are not available yet. The operator must configure the payment provider and recurring price."), { statusCode: 503, code: "BILLING_NOT_CONFIGURED" }); }
 function client(config: AppConfig) {
@@ -23,16 +24,19 @@ async function subscriptions(config: AppConfig, organizationId: string) {
   if (!account) return { account: null, subscription: null, entitled: false };
   const result = await stripe.subscriptions.list({ customer: account.customerId, status: "all", limit: 100 });
   const eligible = result.data.find(s => configuredPrices(config).some(priceId => grantsAccess(s, priceId)));
-  return { account, subscription: eligible ?? result.data.find(s => s.status !== "canceled") ?? result.data[0] ?? null, entitled: Boolean(eligible) };
+  const activePlan = eligible ? eligible.items.data.map(item => planByPrice(config, item.price.id)).find(Boolean) : undefined;
+  return { account, subscription: eligible ?? result.data.find(s => s.status !== "canceled") ?? result.data[0] ?? null, entitled: Boolean(eligible), activePlan };
 }
 export async function requireSubscription(config: AppConfig, organizationId: string) {
-  if (!billingRequired(config)) return;
+  if (!billingRequired(config)) return null;
   const passes = await database.paymentAttempt.findMany({ where: { organizationId, status: "APPROVED", paidUntil: { gt: new Date() } }, take: 20 });
   for (const pass of passes) {
-    if (pass.provider === "offline") return;
-    if (pass.providerReference && ((pass.provider === "paypal" && await verifyPayPal(config, pass)) || (pass.provider === "paystack" && await verifyPaystack(config, pass)))) return;
+    if (pass.provider === "offline") return null;
+    if (pass.providerReference && ((pass.provider === "paypal" && await verifyPayPal(config, pass)) || (pass.provider === "paystack" && await verifyPaystack(config, pass)))) return null;
   }
-  if (!(await subscriptions(config, organizationId)).entitled) throw Object.assign(new Error("An active subscription is required. Open Subscription to manage your plan."), { statusCode: 402, code: "SUBSCRIPTION_REQUIRED" });
+  const state = await subscriptions(config, organizationId);
+  if (!state.entitled || !state.activePlan) throw Object.assign(new Error("An active subscription is required. Open Subscription to manage your plan."), { statusCode: 402, code: "SUBSCRIPTION_REQUIRED" });
+  return state.activePlan;
 }
 async function requireOwner(userId: string, organizationId: string) {
   const owner = await database.membership.findFirst({ where: { userId, organizationId, status: "ACTIVE", roles: { some: { role: { name: "OWNER", isSystem: true, organizationId } } } } });
@@ -63,7 +67,8 @@ export async function registerBilling(app: FastifyInstance, config: AppConfig) {
     const state = await subscriptions(config, principal.organizationId);
     const currentPlan = planCatalog.find(p => state.subscription?.items.data.some(item => item.price.id === configuredPrice(config, p.id))) ?? planCatalog.find(p => configuredPrice(config, p.id))!;
     const price = await plan(config, currentPlan.id);
-    return { configured: true, required: billingRequired(config), entitled: state.entitled, plan: price, subscription: state.subscription ? { status: state.subscription.status, cancelAtPeriodEnd: state.subscription.cancel_at_period_end } : null, hasCustomer: Boolean(state.account) };
+    const usage = state.activePlan ? await currentStandardUsage(principal.organizationId, state.activePlan.proposedMonthlyRuns) : null;
+    return { configured: true, required: billingRequired(config), entitled: state.entitled, plan: price, usage, subscription: state.subscription ? { status: state.subscription.status, cancelAtPeriodEnd: state.subscription.cancel_at_period_end } : null, hasCustomer: Boolean(state.account) };
   });
   app.post("/api/v1/billing/checkout", async request => {
     const principal = await requireOrganization(request);

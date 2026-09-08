@@ -6,6 +6,9 @@ export const planCatalog = [
   { id: "scale", name: "Scale", amount: 24900, currency: "usd", interval: "month", proposedMonthlyRuns: 4000 }
 ] as const;
 export type PlanId = typeof planCatalog[number]["id"];
+export function planByPrice(config: AppConfig, priceId: string): typeof planCatalog[number] | undefined {
+  return planCatalog.find(plan => configuredPrice(config, plan.id) === priceId);
+}
 export function configuredPrice(config: AppConfig, id: PlanId): string | undefined {
   return ({ essential: config.STRIPE_PRICE_ESSENTIAL || config.STRIPE_PRICE_ID, business: config.STRIPE_PRICE_BUSINESS, scale: config.STRIPE_PRICE_SCALE })[id];
 }

@@ -5,6 +5,7 @@ import { McpExecutionGateway } from "@dpsoft/mcp";
 import { z } from "zod";
 import { requireSubscription } from "./billing.js";
 import { decimalDifference } from "./report-math.js";
+import { reserveStandardRun } from "./usage-meter.js";
 import { revenueReportInput } from "./report-input.js";
 import type { AppConfig } from "./config.js";
 import { createSession, requireOrganization, requirePrincipal, SESSION_COOKIE } from "./auth.js";
@@ -69,7 +70,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig) {
   app.post("/api/v1/reports/revenue", async (request) => {
     const principal = await requireOrganization(request);
     await ensurePermission(principal.userId, principal.organizationId, "reports.read");
-    await requireSubscription(config, principal.organizationId);
+    const plan = await requireSubscription(config, principal.organizationId);
     const input = revenueReportInput.parse(request.body);
     const connector = await database.connectorInstance.findFirst({ where: { id: input.connectorId, organizationId: principal.organizationId, deletedAt: null }, include: { tools: { where: { enabled: true, name: "monthly_revenue" } } } });
     const tool = connector?.tools[0];
@@ -77,6 +78,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig) {
     const credential = postgresCredentialSchema.parse(decryptJson(connector.encryptedCredential, config.CREDENTIAL_ENCRYPTION_KEY));
     const selection = selectionInput.parse(connector.allowedSchema);
     try {
+      if (plan) await reserveStandardRun(principal.organizationId, plan.proposedMonthlyRuns);
       const current = await monthlyRevenue(credential, selection, input.month);
       const previous = input.comparisonMonth ? await monthlyRevenue(credential, selection, input.comparisonMonth) : null;
       const result = { current, previous, difference: previous ? decimalDifference(current.amount, previous.amount) : null, source: { connectorId: connector.id, connectorName: connector.name, table: selection.invoicesTable, amountColumn: selection.amountColumn, dateColumn: selection.dateColumn, observedAt: new Date().toISOString(), tool: tool.name }, methodology: "Sum of authorized amount column over UTC month boundaries. Currency is operator-declared; no tax, exchange-rate or accounting adjustments. Separate queries may observe changes between periods." };
@@ -214,8 +216,9 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig) {
   });
 
   app.post("/api/v1/chat", async (request, reply) => {
-    await requireSubscription(config, (await requireOrganization(request)).organizationId);
-    const principal = await requireOrganization(request); await ensurePermission(principal.userId, principal.organizationId, "reports.read"); const input = z.object({ agentId: z.string().uuid(), question: z.string().min(3).max(2000), month: z.string().regex(/^\d{4}-\d{2}$/) }).parse(request.body);
+    const principal = await requireOrganization(request);
+    const plan = await requireSubscription(config, principal.organizationId);
+    await ensurePermission(principal.userId, principal.organizationId, "reports.read"); const input = z.object({ agentId: z.string().uuid(), question: z.string().min(3).max(2000), month: z.string().regex(/^\d{4}-\d{2}$/) }).parse(request.body);
     const agent = await database.agent.findFirst({ where: { id: input.agentId, organizationId: principal.organizationId, active: true }, include: { tools: { include: { tool: { include: { connector: true } } } } } });
     const linked = agent?.tools.find(({ tool }) => tool.name === "monthly_revenue" && tool.enabled);
     if (!agent || !linked?.tool.connector.encryptedCredential) throw Object.assign(new Error("The agent has no authorized revenue tool."), { statusCode: 403, code: "TOOL_NOT_AUTHORIZED" });
@@ -224,6 +227,7 @@ export async function registerRoutes(app: FastifyInstance, config: AppConfig) {
     const registry = new ToolRegistry(); registry.register({ id: linked.tool.id, name: "monthly_revenue", description: linked.tool.description, connectorId, permission: "reports.read", riskLevel: "LOW", mode: "READ", requiresApproval: false, inputSchema: z.object({ month: z.string().regex(/^\d{4}-\d{2}$/) }), outputSchema: z.object({ amount: z.string(), records: z.number(), currency: z.string(), month: z.string() }), execute: async (value) => { const parsed = z.object({ month: z.string() }).parse(value); return monthlyRevenue(credential, selection, parsed.month); } });
     const mcpGateway = new McpExecutionGateway(registry);
     const execute = async (month: string) => mcpGateway.execute({ toolId: linked.tool.id, tenantId: principal.organizationId, value: { month }, authorization: { tenantId: principal.organizationId, userId: principal.userId, permissions: new Set(["reports.read"]), connectorIds: new Set([connectorId]), toolIds: new Set([linked.tool.id]) } });
+    if (plan) await reserveStandardRun(principal.organizationId, plan.proposedMonthlyRuns);
     const result = await openAiToolCall(config, input.question, input.month, execute);
     const conversation = await database.conversation.create({ data: { organizationId: principal.organizationId, userId: principal.userId, agentId: agent.id, title: input.question.slice(0, 80), messages: { create: [{ role: "USER", content: { text: input.question } }, { role: "ASSISTANT", content: { text: result.text, source: result.toolResult ? { connectorId, tool: "monthly_revenue", observed: true, result: result.toolResult, capturedAt: new Date().toISOString() } : null } }] } } });
     await audit({ tenantId: principal.organizationId, actorId: principal.userId, requestId: request.id, action: "tool.executed", resourceType: "conversation", resourceId: conversation.id, connectorId, toolId: linked.tool.id, status: "SUCCESS", metadata: { model: config.OPENAI_MODEL, source: "postgresql" } });
