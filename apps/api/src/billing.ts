@@ -31,8 +31,10 @@ export async function requireSubscription(config: AppConfig, organizationId: str
   if (!billingRequired(config)) return null;
   const passes = await database.paymentAttempt.findMany({ where: { organizationId, status: "APPROVED", paidUntil: { gt: new Date() } }, take: 20 });
   for (const pass of passes) {
-    if (pass.provider === "offline") return null;
-    if (pass.providerReference && ((pass.provider === "paypal" && await verifyPayPal(config, pass)) || (pass.provider === "paystack" && await verifyPaystack(config, pass)))) return null;
+    const passPlan = planCatalog.find(plan => plan.id === pass.planId);
+    if (!passPlan) continue;
+    if (pass.provider === "offline") return passPlan;
+    if (pass.providerReference && ((pass.provider === "paypal" && await verifyPayPal(config, pass)) || (pass.provider === "paystack" && await verifyPaystack(config, pass)))) return passPlan;
   }
   const state = await subscriptions(config, organizationId);
   if (!state.entitled || !state.activePlan) throw Object.assign(new Error("An active subscription is required. Open Subscription to manage your plan."), { statusCode: 402, code: "SUBSCRIPTION_REQUIRED" });

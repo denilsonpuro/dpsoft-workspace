@@ -8,7 +8,7 @@ import { commerceSchema, commerceSettings, currencyCode, isPlatformAdmin, langua
 import { encryptJson, decryptJson } from "./security.js";
 import { initializePayPal, initializePaystack, verifyPayPal, verifyPaystack } from "./payment-providers.js";
 
-const summarySelect = { id: true, organizationId: true, provider: true, status: true, amountMinor: true, currency: true, accessDays: true, receiptName: true, decisionNote: true, paidUntil: true, createdAt: true } as const;
+const summarySelect = { id: true, organizationId: true, provider: true, status: true, amountMinor: true, currency: true, planId: true, accessDays: true, receiptName: true, decisionNote: true, paidUntil: true, createdAt: true } as const;
 const bad = (message: string, statusCode = 400) => Object.assign(new Error(message), { statusCode });
 async function owner(userId: string, organizationId: string) { if (!await database.membership.findFirst({ where: { userId, organizationId, status: "ACTIVE", roles: { some: { role: { name: "OWNER", isSystem: true, organizationId } } } } })) throw bad("Organization owner access is required.", 403); }
 export function validateReceipt(base64: string, mime: string) {
@@ -50,13 +50,13 @@ export async function registerCommerce(app: FastifyInstance, config: AppConfig) 
   app.get("/api/v1/payments", async request => { const p = await requireOrganization(request); await owner(p.userId, p.organizationId); return { payments: await database.paymentAttempt.findMany({ where: { organizationId: p.organizationId }, select: summarySelect, orderBy: { createdAt: "desc" }, take: 100 }) }; });
   app.post("/api/v1/payments", async request => {
     const p = await requireOrganization(request); await owner(p.userId, p.organizationId);
-    const { provider } = z.object({ provider: z.enum(["paypal", "paystack", "offline"]) }).parse(request.body);
+    const { provider, planId } = z.object({ provider: z.enum(["paypal", "paystack", "offline"]), planId: z.enum(["essential", "business", "scale"]) }).parse(request.body);
     const { configuration: c } = await commerceSettings();
     if (!c.gateways[provider] || !c.passAmountMinor) throw bad("This payment method is not available.", 503);
     if ((provider === "paypal" && (!config.PAYPAL_CLIENT_ID || !config.PAYPAL_CLIENT_SECRET)) || (provider === "paystack" && !config.PAYSTACK_SECRET_KEY)) throw bad("Payment provider credentials are missing.", 503);
-    const pending = await database.paymentAttempt.findFirst({ where: { organizationId: p.organizationId, provider, status: "PENDING", createdAt: { gt: new Date(Date.now() - 30 * 60_000) } }, orderBy: { createdAt: "desc" } });
+    const pending = await database.paymentAttempt.findFirst({ where: { organizationId: p.organizationId, provider, planId, status: "PENDING", createdAt: { gt: new Date(Date.now() - 30 * 60_000) } }, orderBy: { createdAt: "desc" } });
     if (pending) return { id: pending.id, url: pending.approvalUrl, status: pending.status };
-    const payment = await database.paymentAttempt.create({ data: { organizationId: p.organizationId, provider, amountMinor: c.passAmountMinor, currency: c.passCurrency, accessDays: c.accessDays } });
+    const payment = await database.paymentAttempt.create({ data: { organizationId: p.organizationId, provider, planId, amountMinor: c.passAmountMinor, currency: c.passCurrency, accessDays: c.accessDays } });
     if (provider === "offline") return { id: payment.id, url: null, status: payment.status };
     try {
       const started = provider === "paypal" ? await initializePayPal(config, payment) : await initializePaystack(config, payment, p.email);
@@ -74,7 +74,7 @@ export async function registerCommerce(app: FastifyInstance, config: AppConfig) 
     const confirmed = payment.provider === "paypal" ? await verifyPayPal(config, payment) : await verifyPaystack(config, payment);
     if (!confirmed) throw bad("Payment is not confirmed. Access has not been activated.", 409);
     const until = new Date(Date.now() + payment.accessDays * 86_400_000);
-    await database.$transaction(async tx => { const changed = await tx.paymentAttempt.updateMany({ where: { id, status: "PENDING" }, data: { status: "APPROVED", paidUntil: until } }); if (changed.count) await tx.auditLog.create({ data: { organizationId: p.organizationId, actorId: p.userId, requestId: request.id, action: "payment.verified", resourceType: "payment", resourceId: id, status: "SUCCESS", metadata: { provider: payment.provider, amountMinor: payment.amountMinor, currency: payment.currency } } }); });
+    await database.$transaction(async tx => { const changed = await tx.paymentAttempt.updateMany({ where: { id, status: "PENDING" }, data: { status: "APPROVED", paidUntil: until } }); if (changed.count) await tx.auditLog.create({ data: { organizationId: p.organizationId, actorId: p.userId, requestId: request.id, action: "payment.verified", resourceType: "payment", resourceId: id, status: "SUCCESS", metadata: { provider: payment.provider, planId: payment.planId, amountMinor: payment.amountMinor, currency: payment.currency } } }); });
     return database.paymentAttempt.findUnique({ where: { id }, select: { status: true, paidUntil: true } });
   });
   app.post("/api/v1/payments/:id/receipt", { bodyLimit: 6 * 1024 * 1024 }, async request => {
@@ -102,7 +102,7 @@ export async function registerCommerce(app: FastifyInstance, config: AppConfig) 
     const payment = await database.paymentAttempt.findUnique({ where: { id } });
     if (!payment || payment.provider !== "offline" || payment.status !== "UNDER_REVIEW") throw bad("Payment is not awaiting review.", 409);
     const until = input.approved ? new Date(Date.now() + payment.accessDays * 86_400_000) : null;
-    await database.$transaction(async tx => { const changed = await tx.paymentAttempt.updateMany({ where: { id, status: "UNDER_REVIEW" }, data: { status: input.approved ? "APPROVED" : "REJECTED", paidUntil: until, decidedById: p.userId, decisionNote: input.note } }); if (!changed.count) throw bad("This payment was already reviewed.", 409); await tx.auditLog.create({ data: { organizationId: payment.organizationId, actorId: p.userId, requestId: request.id, action: input.approved ? "payment.offline_approved" : "payment.offline_rejected", resourceType: "payment", resourceId: id, status: "SUCCESS", metadata: { note: input.note, settlementChecked: input.settlementChecked } } }); });
+    await database.$transaction(async tx => { const changed = await tx.paymentAttempt.updateMany({ where: { id, status: "UNDER_REVIEW" }, data: { status: input.approved ? "APPROVED" : "REJECTED", paidUntil: until, decidedById: p.userId, decisionNote: input.note } }); if (!changed.count) throw bad("This payment was already reviewed.", 409); await tx.auditLog.create({ data: { organizationId: payment.organizationId, actorId: p.userId, requestId: request.id, action: input.approved ? "payment.offline_approved" : "payment.offline_rejected", resourceType: "payment", resourceId: id, status: "SUCCESS", metadata: { planId: payment.planId, note: input.note, settlementChecked: input.settlementChecked } } }); });
     return { status: input.approved ? "APPROVED" : "REJECTED", paidUntil: until };
   });
 }

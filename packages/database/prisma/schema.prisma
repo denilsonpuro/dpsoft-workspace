@@ -114,6 +114,7 @@ model PaymentAttempt {
   status String @default("PENDING")
   amountMinor Int
   currency String
+  planId String?
   accessDays Int
   providerReference String? @unique
   approvalUrl String?
